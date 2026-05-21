@@ -18,9 +18,11 @@ function formatTime(ms: number) {
 
 export default function Home() {
   const [tickets, setTickets] = useState<any[]>([]);
-  const [taskName, setTaskName] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [tick, setTick] = useState(0); // ✅ for live timer
+  const [taskType, setTaskType] = useState("");
+  const [customTask, setCustomTask] = useState("");
+
 
   // ✅ Fetch tickets
   const fetchTickets = async () => {
@@ -32,9 +34,29 @@ export default function Home() {
     setTickets(data || []);
   };
 
+  // Real-time updating
   useEffect(() => {
     fetchTickets();
+
+    const channel = supabase
+      .channel("tickets-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tickets" },
+        (payload) => {
+          console.log("Realtime event:", payload);
+          fetchTickets();
+        }
+      )
+      .subscribe((status) => {
+        console.log("Subscription status:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
 
   // Update Every Second
   useEffect(() => {
@@ -47,17 +69,30 @@ export default function Home() {
 
   // ✅ Create ticket
   const createTicket = async () => {
+    // ✅ determine task name
+    const finalTask =
+      taskType === "Other" ? customTask : taskType;
+
+    // ✅ basic validation
+    if (!finalTask || !assignedTo) {
+      alert("Please fill out all fields");
+      return;
+    }
+
+    // ✅ insert into DB
     await supabase.from("tickets").insert([
       {
-        task_name: taskName,
+        task_name: finalTask,
         assigned_to: assignedTo,
       },
     ]);
 
-    setTaskName("");
+    // ✅ reset form
+    setTaskType("");
+    setCustomTask("");
     setAssignedTo("");
-    fetchTickets();
   };
+
 
   // ✅ CLOCK TOGGLE
   const toggleClock = async (ticket: any) => {
@@ -129,12 +164,31 @@ export default function Home() {
 
       {/* Create Ticket */}
       <div className="mb-6">
-        <input
+        <select
           className="border p-2 mr-2"
-          placeholder="Task Name"
-          value={taskName}
-          onChange={(e) => setTaskName(e.target.value)}
-        />
+          value={taskType}
+          onChange={(e) => setTaskType(e.target.value)}
+        >
+          <option value="">Select Task</option>
+          <option value="Receiving WO">Receiving WO</option>
+          <option value="DA WO">DA WO</option>
+          <option value="Repair WO">Repair WO</option>
+          <option value="FT WO">FT WO</option>
+          <option value="QA WO">QA WO</option>
+          <option value="Shipping WO">Shipping WO</option>
+          <option value="Assembly WO">Assembly WO</option>
+          <option value="Refurbish WO">Refurbish WO</option>
+          <option value="Other">Other</option>
+        </select>
+        {taskType === "Other" && (
+          <input
+            className="border p-2 mr-2"
+            placeholder="Enter Task Name"
+            value={customTask}
+            onChange={(e) => setCustomTask(e.target.value)}
+          />
+        )}
+
 
         <input
           className="border p-2 mr-2"
