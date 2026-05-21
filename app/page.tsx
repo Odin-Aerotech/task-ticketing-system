@@ -32,9 +32,29 @@ export default function Home() {
     setTickets(data || []);
   };
 
+  // Real-time updating
   useEffect(() => {
     fetchTickets();
+
+    const channel = supabase
+      .channel("tickets-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tickets" },
+        (payload) => {
+          console.log("Realtime event:", payload);
+          fetchTickets();
+        }
+      )
+      .subscribe((status) => {
+        console.log("Subscription status:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
 
   // Update Every Second
   useEffect(() => {
