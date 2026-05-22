@@ -101,7 +101,8 @@ export default function Home() {
         tasks(name),
         operators(name)
       `)
-      .order("id", { ascending: false });
+      .order("id", { ascending: false })
+      .is("end_time", null);
 
     setTickets(data || []);
   };
@@ -313,7 +314,7 @@ export default function Home() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Ticket System</h1>
+      <h1 className="text-2xl font-bold mb-4">New Ticket</h1>
 
       {/* Create Ticket */}
         <div className="mb-6">
@@ -382,7 +383,9 @@ export default function Home() {
         Create Ticket
       </button>
     </div>
-
+        <h2 className="text-xl font-bold mt-8 mb-4">
+        Open Tickets
+        </h2>
       {/* Ticket List */}
       <div>
         {tickets.map((t) => {
