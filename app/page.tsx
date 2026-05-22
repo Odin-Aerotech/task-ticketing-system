@@ -18,21 +18,95 @@ function formatTime(ms: number) {
 
 export default function Home() {
   const [tickets, setTickets] = useState<any[]>([]);
-  const [assignedTo, setAssignedTo] = useState("");
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [operators, setOperators] = useState<any[]>([]);
+
+  const [selectedDept, setSelectedDept] = useState<number | "">("");
+  const [selectedTask, setSelectedTask] = useState<number | "">("");
+  const [selectedOperator, setSelectedOperator] = useState<number | "">("");
+  const [caseNumber, setCaseNumber] = useState("");
   const [tick, setTick] = useState(0); // ✅ for live timer
-  const [taskType, setTaskType] = useState("");
-  const [customTask, setCustomTask] = useState("");
+
+  // Fetch Department
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      const { data } = await supabase.from("departments").select("*");
+      setDepartments(data || []);
+    };
+
+    fetchDepartments();
+  }, []);
+
+
+  // Fetch tasks and operators
+  useEffect(() => {
+    if (!selectedDept) {
+      setTasks([]);
+      setOperators([]);
+      return;
+    }
+
+
+    const fetchData = async () => {
+      // ✅ tasks
+      const { data: taskData } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("department_id", selectedDept);
+
+      // ✅ operators via join table
+      const { data: operatorData } = await supabase
+        .from("department_operators")
+        .select(`
+          operator_id,
+          operators!department_operators_operator_id_fkey (id, name)
+        `)
+        .eq("department_id", selectedDept);
+
+      setOperators(
+        (operatorData || [])
+          .map((o) => o.operators)
+          .filter(Boolean)
+      );
+
+
+      
+      console.log("Selected Dept:", selectedDept);
+      console.log("Tasks returned:", taskData);
+      console.log("Operators returned:", operatorData);
+
+
+      setTasks(
+        (taskData || []).sort((a, b) => {
+          const num = (s: string) => parseInt(s.replace(/\D/g, "")) || 0;
+          return num(a.name) - num(b.name);
+        })
+      );
+      setOperators(operatorData?.map((o) => o.operators) || []);
+    };
+
+    fetchData();
+  }, [selectedDept]);
+
 
 
   // ✅ Fetch tickets
   const fetchTickets = async () => {
     const { data } = await supabase
       .from("tickets")
-      .select("*")
+      .select(`
+        *,
+        departments(name),
+        tasks(name),
+        operators(name)
+      `)
       .order("id", { ascending: false });
 
     setTickets(data || []);
   };
+
+
 
   // Real-time updating
   useEffect(() => {
@@ -69,33 +143,39 @@ export default function Home() {
 
   // ✅ Create ticket
   const createTicket = async () => {
-    // ✅ determine task name
-    const finalTask =
-      taskType === "Other" ? customTask : taskType;
-
-    // ✅ basic validation
-    if (!finalTask || !assignedTo) {
+    if (!selectedDept || !selectedTask || !selectedOperator || !caseNumber) {
       alert("Please fill out all fields");
       return;
     }
 
-    // ✅ insert into DB
     await supabase.from("tickets").insert([
       {
-        task_name: finalTask,
-        assigned_to: assignedTo,
+        department_id: selectedDept,
+        task_id: selectedTask,
+        operator_id: selectedOperator,
+        case_number: caseNumber,
+
+        elapsed_start_time: new Date(),
+        is_elapsed_active: true,
       },
     ]);
 
-    // ✅ reset form
-    setTaskType("");
-    setCustomTask("");
-    setAssignedTo("");
+    // reset
+    setSelectedDept("");
+    setSelectedTask("");
+    setSelectedOperator("");
+    setCaseNumber("");
   };
 
 
   // ✅ CLOCK TOGGLE
   const toggleClock = async (ticket: any) => {
+    // 🔴 BLOCK if elapsed is paused
+    if (!ticket.is_elapsed_active) {
+      alert("Cannot start work while time is paused");
+      return;
+    }
+
     if (!ticket.start_time) {
       // clock in (first time)
       await supabase
@@ -107,7 +187,7 @@ export default function Home() {
         .eq("id", ticket.id);
 
     } else if (ticket.is_active) {
-      // clock OUT (save time)
+      // clock OUT
       const now = new Date();
       const start = new Date(ticket.start_time);
 
@@ -136,74 +216,172 @@ export default function Home() {
     fetchTickets();
   };
 
-  // ✅ FINISH TASK
-  const finishTicket = async (ticket: any) => {
-    let total = ticket.total_time || 0;
 
-    if (ticket.is_active && ticket.start_time) {
-      const now = new Date();
-      const start = new Date(ticket.start_time);
-      total += now.getTime() - start.getTime();
+  // Toggle Elapsed
+  const toggleElapsed = async (ticket: any) => {
+    const now = new Date();
+
+    if (ticket.is_elapsed_active) {
+      // 🔴 PAUSE ELAPSED
+
+      let elapsed = ticket.elapsed_time || 0;
+
+      if (ticket.elapsed_start_time) {
+        elapsed +=
+          now.getTime() - new Date(ticket.elapsed_start_time).getTime();
+      }
+
+      let total = ticket.total_time || 0;
+
+      // ✅ ALSO pause work time if active
+      if (ticket.is_active && ticket.start_time) {
+        total += now.getTime() - new Date(ticket.start_time).getTime();
+      }
+
+      await supabase
+        .from("tickets")
+        .update({
+          elapsed_time: elapsed,
+          elapsed_start_time: null,
+          is_elapsed_active: false,
+
+          // ✅ pause work time too
+          total_time: total,
+          start_time: null,
+          is_active: false,
+        })
+        .eq("id", ticket.id);
+    } else {
+      // 🟢 RESUME ELAPSED
+
+      await supabase
+        .from("tickets")
+        .update({
+          elapsed_start_time: now,
+          is_elapsed_active: true,
+
+          // ✅ resume working too
+          start_time: now,
+          is_active: true,
+        })
+        .eq("id", ticket.id);
     }
-
-    await supabase
-      .from("tickets")
-      .update({
-        end_time: new Date(),
-        is_active: false,
-        total_time: total,
-      })
-      .eq("id", ticket.id);
 
     fetchTickets();
   };
+
+
+  // ✅ FINISH TASK
+  const finishTicket = async (ticket: any) => {
+      const now = new Date();
+
+      // ✅ finalize WORK TIME
+      let total = ticket.total_time || 0;
+
+      if (ticket.is_active && ticket.start_time) {
+        total += now.getTime() - new Date(ticket.start_time).getTime();
+      }
+
+      // ✅ finalize ELAPSED TIME (THIS IS STEP 5)
+      let totalElapsed = ticket.elapsed_time || 0;
+
+      if (ticket.is_elapsed_active && ticket.elapsed_start_time) {
+        totalElapsed +=
+          now.getTime() - new Date(ticket.elapsed_start_time).getTime();
+      }
+
+      await supabase
+        .from("tickets")
+        .update({
+          end_time: now,
+
+          // ✅ stop work timer
+          is_active: false,
+          total_time: total,
+          start_time: null,
+
+          // ✅ stop elapsed timer
+          elapsed_time: totalElapsed,
+          is_elapsed_active: false,
+          elapsed_start_time: null,
+        })
+        .eq("id", ticket.id);
+
+      fetchTickets();
+    };
+
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Ticket System</h1>
 
       {/* Create Ticket */}
-      <div className="mb-6">
-        <select
-          className="border p-2 mr-2"
-          value={taskType}
-          onChange={(e) => setTaskType(e.target.value)}
-        >
-          <option value="">Select Task</option>
-          <option value="Receiving WO">Receiving WO</option>
-          <option value="DA WO">DA WO</option>
-          <option value="Repair WO">Repair WO</option>
-          <option value="FT WO">FT WO</option>
-          <option value="QA WO">QA WO</option>
-          <option value="Shipping WO">Shipping WO</option>
-          <option value="Assembly WO">Assembly WO</option>
-          <option value="Refurbish WO">Refurbish WO</option>
-          <option value="Other">Other</option>
-        </select>
-        {taskType === "Other" && (
-          <input
-            className="border p-2 mr-2"
-            placeholder="Enter Task Name"
-            value={customTask}
-            onChange={(e) => setCustomTask(e.target.value)}
-          />
-        )}
+        <div className="mb-6">
+      {/* ✅ Department */}
+      <select
+        className="border p-2 mr-2"
+        value={selectedDept}
+        onChange={(e) => {
+          const value = Number(e.target.value);
+          setSelectedDept(value);
+          setSelectedTask("");
+          setSelectedOperator("");
+        }}
+      >
+        <option value="">Select Department</option>
+        {departments.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+      </select>
 
+      {/* ✅ Task (filtered by department) */}
+      <select
+        className="border p-2 mr-2"
+        value={selectedTask}
+        onChange={(e) => setSelectedTask(Number(e.target.value))}
+        disabled={!selectedDept}
+      >
+        <option value="">Select Task</option>
+        {tasks.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
 
-        <input
-          className="border p-2 mr-2"
-          placeholder="Assigned To"
-          value={assignedTo}
-          onChange={(e) => setAssignedTo(e.target.value)}
-        />
+      {/* ✅ Operator (filtered by department via join table) */}
+      <select
+        className="border p-2 mr-2"
+        value={selectedOperator}
+        onChange={(e) => setSelectedOperator(Number(e.target.value))}
+        disabled={!selectedDept}
+      >
+        <option value="">Select Operator</option>
+        {operators.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
 
-        <button
-          className="bg-blue-500 text-white px-4 py-2"
-          onClick={createTicket}
-        >
-          Create Ticket
-        </button>
-      </div>
+      {/* ✅ Case Number */}
+      <input
+        className="border p-2 mr-2"
+        placeholder="Case Number"
+        value={caseNumber}
+        onChange={(e) => setCaseNumber(e.target.value)}
+      />
+
+      {/* ✅ Submit */}
+      <button
+        className="bg-blue-500 text-white px-4 py-2"
+        onClick={createTicket}
+      >
+        Create Ticket
+      </button>
+    </div>
 
       {/* Ticket List */}
       <div>
@@ -218,12 +396,11 @@ export default function Home() {
             t.created_at || t.start_time || now
           ).getTime();
 
-          const elapsed = Math.max(
-            0,
-            t.end_time
-              ? new Date(t.end_time).getTime() - created
-              : now - created
-          );
+          let elapsed = t.elapsed_time || 0;
+
+          if (t.is_elapsed_active && t.elapsed_start_time) {
+            elapsed += now - new Date(t.elapsed_start_time).getTime();
+          }
 
           // ✅ WORK TIME (saved + active session)
           let workTime = t.total_time || 0;
@@ -235,8 +412,10 @@ export default function Home() {
           return (
             <div key={t.id} className="border p-4 mb-3">
               <p><strong>Ticket #{t.id}</strong></p>
-              <p>Task: {t.task_name}</p>
-              <p>Assigned: {t.assigned_to}</p>
+              <p>Department: {t.departments?.name}</p>
+              <p>Task: {t.tasks?.name}</p>
+              <p>Operator: {t.operators?.name}</p>
+              <p>Case #: {t.case_number}</p>
 
               <p>
                 Status:{" "}
@@ -276,6 +455,18 @@ export default function Home() {
                     : "Resume"}
                 </button>
               )}
+
+              
+                {/* ✅ NEW Pause/Resume Elapsed Button */}
+                {!end && (
+                  <button
+                    className="mt-2 bg-yellow-500 text-white px-3 py-1 mr-2"
+                    onClick={() => toggleElapsed(t)}
+                  >
+                    {t.is_elapsed_active ? "Pause Time" : "Resume Time"}
+                  </button>
+                )}
+
 
               {/* Finish Button */}
               {!end && (
