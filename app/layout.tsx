@@ -36,11 +36,15 @@ export default function RootLayout({
 
           <nav className="flex flex-col space-y-2">
             <Link href="/" className="hover:bg-gray-700 p-2 rounded">
-              Tickets
+              Active Tickets
             </Link>
 
             <Link href="/analytics" className="hover:bg-gray-700 p-2 rounded">
               Analytics
+            </Link>
+
+            <Link href="/tickets" className="hover:bg-gray-700 p-2 rounded">
+              Ticket History
             </Link>
           </nav>
         </div>
