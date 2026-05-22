@@ -17,7 +17,18 @@ export default function Analytics() {
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
 
-  const [tickets, setTickets] = useState<any[]>([]);
+    const [filterDept, setFilterDept] = useState("");
+    const [filterTask, setFilterTask] = useState("");
+
+    const [tickets, setTickets] = useState<any[]>([]);
+
+    const departmentsList = Array.from(
+    new Set(tickets.map((t) => t.departments?.name).filter(Boolean))
+    );
+
+    const tasksList = Array.from(
+    new Set(tickets.map((t) => t.tasks?.name).filter(Boolean))
+    );
 
   // ✅ Fetch tickets
   const fetchTickets = async () => {
@@ -84,7 +95,18 @@ export default function Analytics() {
     // ✅ Count completed tickets per assignee (case-insensitive)
     const assigneeCounts: Record<string, number> = {};
 
-    filteredTickets.forEach((t) => {
+    const filteredForAssignee = filteredTickets.filter((t) => {
+    const matchesDept =
+        !filterDept || t.departments?.name === filterDept;
+
+    const matchesTask =
+        !filterTask || t.tasks?.name === filterTask;
+
+    return matchesDept && matchesTask;
+    });
+
+    // ✅ THIS WAS MISSING
+    filteredForAssignee.forEach((t) => {
     if (t.end_time && t.operators?.name) {
         const name = t.operators.name;
 
@@ -146,6 +168,49 @@ export default function Analytics() {
         <h2 className="text-xl font-bold mt-8 mb-4">
         Completed Tickets by Assignee
         </h2>
+
+        <div className="flex gap-4 mb-4">
+        {/* Department Filter */}
+        <select
+            className="border p-2"
+            value={filterDept}
+            onChange={(e) => {
+            setFilterDept(e.target.value);
+            setFilterTask(""); // reset task when dept changes
+            }}
+        >
+            <option value="">All Departments</option>
+            {departmentsList.map((d) => (
+            <option key={d} value={d}>
+                {d}
+            </option>
+            ))}
+        </select>
+
+        {/* Task Filter */}
+        <select
+            className="border p-2"
+            value={filterTask}
+            onChange={(e) => setFilterTask(e.target.value)}
+            disabled={!filterDept}
+        >
+            <option value="">All Tasks</option>
+            {tasksList
+            .filter((t) => {
+                if (!filterDept) return true;
+                return tickets.some(
+                (tk) =>
+                    tk.tasks?.name === t &&
+                    tk.departments?.name === filterDept
+                );
+            })
+            .map((t) => (
+                <option key={t} value={t}>
+                {t}
+                </option>
+            ))}
+        </select>
+        </div>
 
         <div className="bg-white p-4 rounded shadow">
         <ResponsiveContainer width="100%" height={400}>
