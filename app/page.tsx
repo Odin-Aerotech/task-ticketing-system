@@ -162,9 +162,6 @@ export default function Home() {
     ]);
 
     // reset
-    setSelectedDept("");
-    setSelectedTask("");
-    setSelectedOperator("");
     setCaseNumber("");
   };
 
@@ -320,7 +317,7 @@ export default function Home() {
         <div className="mb-6">
       {/* ✅ Department */}
       <select
-        className="border p-2 mr-2"
+        className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
         value={selectedDept}
         onChange={(e) => {
           const value = Number(e.target.value);
@@ -339,7 +336,7 @@ export default function Home() {
 
       {/* ✅ Task (filtered by department) */}
       <select
-        className="border p-2 mr-2"
+        className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
         value={selectedTask}
         onChange={(e) => setSelectedTask(Number(e.target.value))}
         disabled={!selectedDept}
@@ -354,7 +351,7 @@ export default function Home() {
 
       {/* ✅ Operator (filtered by department via join table) */}
       <select
-        className="border p-2 mr-2"
+        className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
         value={selectedOperator}
         onChange={(e) => setSelectedOperator(Number(e.target.value))}
         disabled={!selectedDept}
@@ -369,7 +366,7 @@ export default function Home() {
 
       {/* ✅ Case Number */}
       <input
-        className="border p-2 mr-2"
+        className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
         placeholder="Case Number"
         value={caseNumber}
         onChange={(e) => setCaseNumber(e.target.value)}
@@ -413,7 +410,7 @@ export default function Home() {
           }
 
           return (
-            <div key={t.id} className="border p-4 mb-3">
+            <div className="border p-4 mb-3 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700">
               <p><strong>Ticket #{t.id}</strong></p>
               <p>Department: {t.departments?.name}</p>
               <p>Task: {t.tasks?.name}</p>
