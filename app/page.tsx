@@ -26,7 +26,13 @@ export default function Home() {
   const [selectedTask, setSelectedTask] = useState<number | "">("");
   const [selectedOperator, setSelectedOperator] = useState<number | "">("");
   const [caseNumber, setCaseNumber] = useState("");
-  const [tick, setTick] = useState(0); // ✅ for live timer
+  const [, setTick] = useState(0); // ✅ for live timer
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTasks, setEditTasks] = useState<any[]>([]);
+  const [editOperators, setEditOperators] = useState<any[]>([]);
+
+
 
   // Fetch Department
   useEffect(() => {
@@ -67,7 +73,6 @@ export default function Home() {
       setOperators(
         (operatorData || [])
           .map((o) => o.operators)
-          .filter(Boolean)
       );
 
 
@@ -85,7 +90,6 @@ export default function Home() {
       );
       setOperators(operatorData?.map((o) => o.operators) || []);
     };
-
     fetchData();
   }, [selectedDept]);
 
@@ -109,7 +113,7 @@ export default function Home() {
 
 
 
-  // Real-time updating
+  // Real-time updating new tasks being created
   useEffect(() => {
     fetchTickets();
 
@@ -132,6 +136,26 @@ export default function Home() {
     };
   }, []);
 
+  // Update tickets after edit
+  const updateTicket = async (ticket: any) => {
+    if (!ticket.task_id || !ticket.operator_id) {
+      alert("Please select both task and operator");
+      return;
+    }
+
+    await supabase
+      .from("tickets")
+      .update({
+        department_id: ticket.department_id,
+        task_id: ticket.task_id,
+        operator_id: ticket.operator_id,
+        case_number: ticket.case_number,
+      })
+      .eq("id", ticket.id);
+
+    setEditingId(null);
+    fetchTickets();
+  };
 
   // Update Every Second
   useEffect(() => {
@@ -308,13 +332,36 @@ export default function Home() {
       fetchTickets();
     };
 
+  // Editing operators
+  const getDeptData = async (deptId: number) => {
+    // ✅ fetch tasks
+    const { data: taskData } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("department_id", deptId);
+
+    // ✅ fetch operators
+    const { data: operatorData } = await supabase
+      .from("department_operators")
+      .select(`
+        operator_id,
+        operators!department_operators_operator_id_fkey (id, name)
+      `)
+      .eq("department_id", deptId);
+
+    return {
+      tasks: taskData || [],
+      operators: (operatorData || []).map((o: any) => o.operators),
+    };
+  };
+
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">New Ticket</h1>
 
       {/* Create Ticket */}
-        <div className="mb-6">
+        <div className="mb-6 flex flex-wrap gap-2">
       {/* ✅ Department */}
       <select
         className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
@@ -338,7 +385,7 @@ export default function Home() {
       <select
         className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
         value={selectedTask}
-        onChange={(e) => setSelectedTask(Number(e.target.value))}
+        onChange={(e) => setSelectedTask(e.target.value === "" ? null : Number(e.target.value))}
         disabled={!selectedDept}
       >
         <option value="">Select Task</option>
@@ -379,10 +426,11 @@ export default function Home() {
       >
         Create Ticket
       </button>
-    </div>
-        <h2 className="text-xl font-bold mt-8 mb-4">
+      </div>
+
+      <h2 className="text-xl font-bold mt-8 mb-4">
         Open Tickets
-        </h2>
+      </h2>
       {/* Ticket List */}
       <div>
         {tickets.map((t) => {
@@ -411,11 +459,130 @@ export default function Home() {
 
           return (
             <div className="border p-4 mb-3 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700">
-              <p><strong>Ticket #{t.id}</strong></p>
-              <p>Department: {t.departments?.name}</p>
-              <p>Task: {t.tasks?.name}</p>
-              <p>Operator: {t.operators?.name}</p>
-              <p>Case #: {t.case_number}</p>
+
+              {/* Editing Ticket*/}
+              {editingId === t.id ? (
+                <>
+                  {/* ✅ Department */}
+                  <select
+                    className="border p-2 mr-2 bg-white dark:bg-gray-800"
+                    value={t.department_id}
+                    onChange={async (e) => {
+                      const newDept = Number(e.target.value);
+
+                      // ✅ fetch BOTH tasks + operators
+                      const { tasks: newTasks, operators: newOperators } =
+                        await getDeptData(newDept);
+
+                      // ✅ update dropdown sources
+                      setEditTasks(newTasks);
+                      setEditOperators(newOperators);
+
+                      // ✅ update ticket itself
+                      setTickets((prev) =>
+                        prev.map((ticket) =>
+                          ticket.id === t.id
+                            ? {
+                                ...ticket,
+                                department_id: newDept,
+                                task_id: null,
+                                operator_id: null,
+                              }
+                            : ticket
+                        )
+                      );
+                    }}
+                  >
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+
+                  {/* ✅ Task */}
+                  <select
+                    className="border p-2 mr-2 bg-white dark:bg-gray-800"
+                    value={t.task_id || ""}
+                    onChange={(e) =>
+                      setTickets((prev) =>
+                        prev.map((ticket) =>
+                          ticket.id === t.id
+                            ? { ...ticket, task_id: Number(e.target.value) }
+                            : ticket
+                        )
+                      )
+                    }
+                  >
+                    <option value="">Select Task</option>
+
+                    {editTasks.map((task) => (
+                      <option key={task.id} value={task.id}>
+                        {task.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* ✅ Operator */}
+                  <select
+                      className="border p-2 mr-2 bg-white dark:bg-gray-800"
+                      value={t.operator_id || ""}
+                      onChange={(e) =>
+                        setTickets((prev) =>
+                          prev.map((ticket) =>
+                            ticket.id === t.id
+                              ? { ...ticket, operator_id: Number(e.target.value) }
+                              : ticket
+                          )
+                        )
+                      }
+                    >
+                      <option value="">Select Operator</option>
+
+                      {editOperators.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+
+                  {/* ✅ Case Number */}
+                  <input
+                    className="border p-2 bg-white dark:bg-gray-800"
+                    value={t.case_number}
+                    onChange={(e) =>
+                      setTickets((prev) =>
+                        prev.map((ticket) =>
+                          ticket.id === t.id
+                            ? { ...ticket, case_number: e.target.value }
+                            : ticket
+                        )
+                      )
+                    }
+                  />
+
+                  {/* ✅ Save */}
+                  <button
+                    className="ml-2 bg-green-500 text-white px-3 py-1"
+                    onClick={() => updateTicket(t)}
+                  >
+                    Save
+                  </button>
+
+                  {/* ✅ Cancel */}
+                  <button
+                    className="ml-2 text-red-500"
+                    onClick={() => setEditingId(null)}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Department: {t.departments?.name}</p>
+                  <p>Task: {t.tasks?.name}</p>
+                  <p>Operator: {t.operators?.name}</p>
+                  <p>Case #: {t.case_number}</p>
+                </>
+              )}
 
               <p>
                 Status:{" "}
@@ -441,6 +608,24 @@ export default function Home() {
 
               <p>🛠 Work Time: {formatTime(workTime)}</p>
               <p>⏱ Elapsed Time: {formatTime(elapsed)}</p>
+
+              {/* ✅ Edit Button */}
+              {!end && (
+                <button
+                  className="mt-2 bg-blue-500 text-white px-3 py-1 mr-2"                 
+                  onClick={async () => {
+                    setEditingId(t.id);
+
+                    const { tasks: newTasks, operators: newOperators } =
+                      await getDeptData(t.department_id);
+
+                    setEditTasks(newTasks);
+                    setEditOperators(newOperators);
+                  }}
+                >
+                  Edit
+                </button>
+              )}
 
               {/* Clock Button */}
               {!end && (
@@ -481,6 +666,8 @@ export default function Home() {
           );
         })}
       </div>
+
+
     </div>
   );
 }
