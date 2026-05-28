@@ -406,7 +406,7 @@ export default function Home() {
       <select
         className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
         value={selectedTask}
-        onChange={(e) => setSelectedTask(e.target.value === "" ? null : Number(e.target.value))}
+        onChange={(e) => setSelectedTask(Number(e.target.value))}
         disabled={!selectedDept}
       >
         <option value="">Select Task</option>
