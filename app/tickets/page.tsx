@@ -155,7 +155,7 @@ export default function TicketsPage() {
           ).toLocaleString();
 
           return (
-            <div key={t.id} className="border p-4 mb-3 rounded">
+            <div className="border p-4 mb-3 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700">
               <p>
                 <strong>Ticket #{t.id}</strong>
               </p>
@@ -163,6 +163,10 @@ export default function TicketsPage() {
               <p>Task: {t.tasks?.name}</p>
               <p>Operator: {t.operators?.name}</p>
               <p>Case #: {t.case_number}</p>
+              <p className="whitespace-pre-wrap">
+                Comments: {t.comments || "—"}
+              </p>
+
 
               <p>Created: {created}</p>
               <p>🛠 Work Time: {formatTime(workTime)}</p>

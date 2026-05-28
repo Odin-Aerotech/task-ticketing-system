@@ -26,7 +26,18 @@ export default function Home() {
   const [selectedTask, setSelectedTask] = useState<number | "">("");
   const [selectedOperator, setSelectedOperator] = useState<number | "">("");
   const [caseNumber, setCaseNumber] = useState("");
-  const [tick, setTick] = useState(0); // ✅ for live timer
+  const [comments, setComments] = useState("");
+
+  const [, setTick] = useState(0); // ✅ for live timer
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTasks, setEditTasks] = useState<any[]>([]);
+  const [editOperators, setEditOperators] = useState<any[]>([]);
+
+  const [filterDept, setFilterDept] = useState<number | "">("");
+  const [filterOperator, setFilterOperator] = useState<number | "">("");
+  const [allOperators, setAllOperators] = useState<any[]>([]);
+
 
   // Fetch Department
   useEffect(() => {
@@ -67,7 +78,6 @@ export default function Home() {
       setOperators(
         (operatorData || [])
           .map((o) => o.operators)
-          .filter(Boolean)
       );
 
 
@@ -85,7 +95,6 @@ export default function Home() {
       );
       setOperators(operatorData?.map((o) => o.operators) || []);
     };
-
     fetchData();
   }, [selectedDept]);
 
@@ -108,8 +117,21 @@ export default function Home() {
   };
 
 
+  // Get all operators
+  useEffect(() => {
+    const fetchAllOperators = async () => {
+      const { data } = await supabase
+        .from("operators")
+        .select("*");
 
-  // Real-time updating
+      setAllOperators(data || []);
+    };
+
+    fetchAllOperators();
+  }, []);
+
+
+  // Real-time updating new tasks being created
   useEffect(() => {
     fetchTickets();
 
@@ -132,6 +154,27 @@ export default function Home() {
     };
   }, []);
 
+  // Update tickets after edit
+  const updateTicket = async (ticket: any) => {
+    if (!ticket.task_id || !ticket.operator_id || !ticket.case_number) {
+      alert("Please fill out required fields");
+      return;
+    }
+
+    await supabase
+      .from("tickets")
+      .update({
+        department_id: ticket.department_id,
+        task_id: ticket.task_id,
+        operator_id: ticket.operator_id,
+        case_number: ticket.case_number,
+        comments: ticket.comments,
+      })
+      .eq("id", ticket.id);
+
+    setEditingId(null);
+    fetchTickets();
+  };
 
   // Update Every Second
   useEffect(() => {
@@ -145,7 +188,7 @@ export default function Home() {
   // ✅ Create ticket
   const createTicket = async () => {
     if (!selectedDept || !selectedTask || !selectedOperator || !caseNumber) {
-      alert("Please fill out all fields");
+      alert("Please fill out all required fields");
       return;
     }
 
@@ -155,6 +198,7 @@ export default function Home() {
         task_id: selectedTask,
         operator_id: selectedOperator,
         case_number: caseNumber,
+        comments: comments,
 
         elapsed_start_time: new Date(),
         is_elapsed_active: true,
@@ -163,6 +207,7 @@ export default function Home() {
 
     // reset
     setCaseNumber("");
+    setComments("");
   };
 
 
@@ -308,13 +353,36 @@ export default function Home() {
       fetchTickets();
     };
 
+  // Editing operators
+  const getDeptData = async (deptId: number) => {
+    // ✅ fetch tasks
+    const { data: taskData } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("department_id", deptId);
+
+    // ✅ fetch operators
+    const { data: operatorData } = await supabase
+      .from("department_operators")
+      .select(`
+        operator_id,
+        operators!department_operators_operator_id_fkey (id, name)
+      `)
+      .eq("department_id", deptId);
+
+    return {
+      tasks: taskData || [],
+      operators: (operatorData || []).map((o: any) => o.operators),
+    };
+  };
+
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">New Ticket</h1>
 
       {/* Create Ticket */}
-        <div className="mb-6">
+        <div className="mb-6 flex flex-wrap gap-2">
       {/* ✅ Department */}
       <select
         className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
@@ -372,6 +440,14 @@ export default function Home() {
         onChange={(e) => setCaseNumber(e.target.value)}
       />
 
+      {/* Comments (optional)*/}
+      <textarea
+        className="border p-2 mr-2 bg-white dark:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-gray-600"
+        placeholder="Comments (optional)"
+        value={comments}
+        onChange={(e) => setComments(e.target.value)}
+      />
+
       {/* ✅ Submit */}
       <button
         className="bg-blue-500 text-white px-4 py-2"
@@ -379,13 +455,60 @@ export default function Home() {
       >
         Create Ticket
       </button>
-    </div>
-        <h2 className="text-xl font-bold mt-8 mb-4">
+      </div>
+
+      <h2 className="text-xl font-bold mt-8 mb-4">
         Open Tickets
-        </h2>
+      </h2>
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {/* ✅ Filter Department */}
+        <select
+          className="border p-2 bg-white dark:bg-gray-800"
+          value={filterDept}
+          onChange={(e) => {
+            setFilterDept(
+              e.target.value === "" ? "" : Number(e.target.value)
+            );
+            setFilterOperator("");
+          }}
+        >
+          <option value="">All Departments</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+
+        {/* ✅ Filter Operator */}
+        <select
+          className="border p-2 bg-white dark:bg-gray-800"
+          value={filterOperator}
+          onChange={(e) =>
+            setFilterOperator(
+              e.target.value === "" ? "" : Number(e.target.value)
+            )
+          }
+        >
+          <option value="">All Operators</option>
+          {allOperators.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Ticket List */}
       <div>
-        {tickets.map((t) => {
+        {tickets
+        .filter((t) => {
+          if (filterDept && t.department_id !== filterDept) return false;
+          if (filterOperator && t.operator_id !== filterOperator) return false;
+          return true;
+        })
+        .map((t) => {
           const now = Date.now();
 
           const start = t.start_time ? new Date(t.start_time).getTime() : null;
@@ -410,12 +533,168 @@ export default function Home() {
           }
 
           return (
-            <div className="border p-4 mb-3 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700">
-              <p><strong>Ticket #{t.id}</strong></p>
-              <p>Department: {t.departments?.name}</p>
-              <p>Task: {t.tasks?.name}</p>
-              <p>Operator: {t.operators?.name}</p>
-              <p>Case #: {t.case_number}</p>
+            <div 
+            key={t.id}
+            className="border p-4 mb-3 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700">
+
+              {/* Editing Ticket*/}
+              {editingId === t.id ? (
+                <>
+                  {/* ✅ Row 1 — Main fields */}
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {/* ✅ Department */}
+                    <select
+                      className="border p-2 bg-white dark:bg-gray-800"
+                      value={t.department_id}
+                      onChange={async (e) => {
+                        const newDept = Number(e.target.value);
+
+                        const { tasks: newTasks, operators: newOperators } =
+                          await getDeptData(newDept);
+
+                        setEditTasks(newTasks);
+                        setEditOperators(newOperators);
+
+                        setTickets((prev) =>
+                          prev.map((ticket) =>
+                            ticket.id === t.id
+                              ? {
+                                  ...ticket,
+                                  department_id: newDept,
+                                  task_id: null,
+                                  operator_id: null,
+                                }
+                              : ticket
+                          )
+                        );
+                      }}
+                    >
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* ✅ Task */}
+                    <select
+                      className="border p-2 bg-white dark:bg-gray-800"
+                      value={t.task_id || ""}
+                      onChange={(e) =>
+                        setTickets((prev) =>
+                          prev.map((ticket) =>
+                            ticket.id === t.id
+                              ? {
+                                  ...ticket,
+                                  task_id:
+                                    e.target.value === ""
+                                      ? null
+                                      : Number(e.target.value),
+                                }
+                              : ticket
+                          )
+                        )
+                      }
+                    >
+                      <option value="">Select Task</option>
+
+                      {editTasks.map((task) => (
+                        <option key={task.id} value={task.id}>
+                          {task.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* ✅ Operator */}
+                    <select
+                      className="border p-2 bg-white dark:bg-gray-800"
+                      value={t.operator_id || ""}
+                      onChange={(e) =>
+                        setTickets((prev) =>
+                          prev.map((ticket) =>
+                            ticket.id === t.id
+                              ? {
+                                  ...ticket,
+                                  operator_id:
+                                    e.target.value === ""
+                                      ? null
+                                      : Number(e.target.value),
+                                }
+                              : ticket
+                          )
+                        )
+                      }
+                    >
+                      <option value="">Select Operator</option>
+
+                      {editOperators.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* ✅ Case Number */}
+                    <input
+                      className="border p-2 bg-white dark:bg-gray-800"
+                      value={t.case_number}
+                      placeholder = "Case Number"
+                      onChange={(e) =>
+                        setTickets((prev) =>
+                          prev.map((ticket) =>
+                            ticket.id === t.id
+                              ? { ...ticket, case_number: e.target.value }
+                              : ticket
+                          )
+                        )
+                      }
+                    />
+                  </div>
+
+                  {/* ✅ Row 2 — Comments */}
+                  <div className="mt-2 w-full">
+                    <textarea
+                      className="w-full border p-2 bg-white dark:bg-gray-800 resize-none h-20"
+                      value={t.comments || ""}
+                      placeholder="Comments (optional)"
+                      onChange={(e) =>
+                        setTickets((prev) =>
+                          prev.map((ticket) =>
+                            ticket.id === t.id
+                              ? { ...ticket, comments: e.target.value }
+                              : ticket
+                          )
+                        )
+                      }
+                    />
+                  </div>
+
+                  {/* ✅ Row 3 — Buttons */}
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      className="bg-green-500 text-white px-3 py-1"
+                      onClick={() => updateTicket(t)}
+                    >
+                      Save
+                    </button>
+
+                    <button
+                      className="text-red-500"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>Department: {t.departments?.name}</p>
+                  <p>Task: {t.tasks?.name}</p>
+                  <p>Operator: {t.operators?.name}</p>
+                  <p>Case #: {t.case_number}</p>
+                  <p>Comments: {t.comments || "—"}</p>
+                </>
+              )}
 
               <p>
                 Status:{" "}
@@ -441,6 +720,24 @@ export default function Home() {
 
               <p>🛠 Work Time: {formatTime(workTime)}</p>
               <p>⏱ Elapsed Time: {formatTime(elapsed)}</p>
+
+              {/* ✅ Edit Button */}
+              {!end && (
+                <button
+                  className="mt-2 bg-blue-500 text-white px-3 py-1 mr-2"                 
+                  onClick={async () => {
+                    setEditingId(t.id);
+
+                    const { tasks: newTasks, operators: newOperators } =
+                      await getDeptData(t.department_id);
+
+                    setEditTasks(newTasks);
+                    setEditOperators(newOperators);
+                  }}
+                >
+                  Edit
+                </button>
+              )}
 
               {/* Clock Button */}
               {!end && (
@@ -481,6 +778,8 @@ export default function Home() {
           );
         })}
       </div>
+
+
     </div>
   );
 }
